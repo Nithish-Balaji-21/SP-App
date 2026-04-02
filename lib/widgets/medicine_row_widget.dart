@@ -134,9 +134,9 @@ class _MedicineRowWidgetState extends State<MedicineRowWidget> {
                       if (query.isEmpty) {
                         return all.take(20);
                       }
-                      return all.where(
-                        (name) => name.toLowerCase().contains(query),
-                      ).take(20);
+                      return all
+                          .where((name) => name.toLowerCase().contains(query))
+                          .take(20);
                     },
                     onSelected: (selectedName) {
                       final clean = _cleanMedicineName(selectedName);
@@ -166,7 +166,8 @@ class _MedicineRowWidgetState extends State<MedicineRowWidget> {
                         ) {
                           if (textEditingController.text !=
                               _medicineController.text) {
-                            textEditingController.text = _medicineController.text;
+                            textEditingController.text =
+                                _medicineController.text;
                           }
                           return TextFormField(
                             controller: textEditingController,
@@ -179,7 +180,9 @@ class _MedicineRowWidgetState extends State<MedicineRowWidget> {
                             onChanged: (value) {
                               final clean = _cleanMedicineName(value);
                               _medicineController.text = clean;
-                              widget.onChanged(widget.item.copyWith(name: clean));
+                              widget.onChanged(
+                                widget.item.copyWith(name: clean),
+                              );
                               widget.onMedicineNameChanged(clean);
                             },
                           );
@@ -279,7 +282,8 @@ class _MedicineRowWidgetState extends State<MedicineRowWidget> {
     final selected = widget.medicineOptions.cast<MedicineMaster?>().firstWhere(
       (medicine) =>
           medicine != null &&
-          _cleanMedicineName(medicine.name) == _cleanMedicineName(widget.item.name),
+          _cleanMedicineName(medicine.name) ==
+              _cleanMedicineName(widget.item.name),
       orElse: () => null,
     );
 
@@ -295,9 +299,9 @@ class _MedicineRowWidgetState extends State<MedicineRowWidget> {
       alignment: Alignment.centerLeft,
       child: Text(
         '$unitText | $packText',
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Colors.grey[700],
-            ),
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
       ),
     );
   }
