@@ -234,11 +234,11 @@ class PdfGenerator {
                 'CASH BILL',
                 style: pw.TextStyle(
                   fontSize: headSize,
-                  color: _inkBlue,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-              pw.Spacer(),
+                  0: const pw.FlexColumnWidth(0.8),
+                  1: const pw.FlexColumnWidth(2.5),
+                  2: const pw.FlexColumnWidth(1.35),
+                  3: const pw.FlexColumnWidth(1.05),
+                  4: const pw.FlexColumnWidth(1.15),
               pw.Text(
                 'Ph: +91 9865605061',
                 style: pw.TextStyle(fontSize: textSize, color: _inkBlue),
@@ -246,8 +246,8 @@ class PdfGenerator {
             ],
           ),
           pw.SizedBox(height: compact ? 2 : 3),
-          pw.Container(
-            decoration: pw.BoxDecoration(
+                      _headCell('Rate', headSize),
+                      _headCell('Amount', headSize),
               border: pw.Border.all(color: _inkBlue, width: 0.8),
             ),
             padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 1),
@@ -261,8 +261,8 @@ class PdfGenerator {
               textAlign: pw.TextAlign.center,
             ),
           ),
-          pw.SizedBox(height: compact ? 1.5 : 2),
-          pw.Text(
+                        _bodyCell(row['rate']!, fontSize, rowHeight, pw.TextAlign.right),
+                        _bodyCell(row['amount']!, fontSize, rowHeight, pw.TextAlign.right),
             '10, Kamarajar Bus Stand, North-West Municipal Complex, Dindigul.',
             style: pw.TextStyle(fontSize: textSize - 0.2, color: _inkBlue),
             textAlign: pw.TextAlign.center,
@@ -339,7 +339,7 @@ class PdfGenerator {
             _headCell('Particulars', headSize),
             _headCell('B.N. ED', headSize),
             _headCell('Rs.', headSize),
-            _headCell('P.', headSize),
+            _headCell('Line Total', headSize),
           ],
         ),
         ...rows.map(
@@ -353,8 +353,8 @@ class PdfGenerator {
                 pw.TextAlign.left,
               ),
               _bodyCell(row['bned']!, fontSize, rowHeight, pw.TextAlign.left),
-              _bodyCell(row['rs']!, fontSize, rowHeight, pw.TextAlign.right),
-              _bodyCell(row['p']!, fontSize, rowHeight, pw.TextAlign.right),
+              _bodyCell(row['rate']!, fontSize, rowHeight, pw.TextAlign.right),
+              _bodyCell(row['amount']!, fontSize, rowHeight, pw.TextAlign.right),
             ],
           ),
         ),
@@ -493,15 +493,17 @@ class PdfGenerator {
           'qty': item.qty.toString(),
           'particulars': _cleanMedicineName(item.name),
           'bned': item.batchEd,
-          'rs': item.rs.toString(),
-          'p': item.paise.toString().padLeft(2, '0'),
+          'rate': item.unitRatePaise <= 0 ? '' : _formatMoneyInr(item.unitRatePaise),
+          'amount': item.amountPaise <= 0
+              ? ''
+              : '${item.qty} x ${_formatMoneyInr(item.unitRatePaise)} = ${_formatMoneyInr(item.amountPaise)}',
         });
       }
     }
 
     const minRows = 8;
     while (rows.length < minRows) {
-      rows.add({'qty': '', 'particulars': '', 'bned': '', 'rs': '', 'p': ''});
+      rows.add({'qty': '', 'particulars': '', 'bned': '', 'rate': '', 'amount': ''});
     }
     return rows;
   }

@@ -179,11 +179,11 @@ class _BillPreviewScreenState extends State<BillPreviewScreen> {
               Table(
                 border: TableBorder.all(color: _inkBlue, width: 1),
                 columnWidths: const {
-                  0: FlexColumnWidth(0.9),
-                  1: FlexColumnWidth(2.8),
-                  2: FlexColumnWidth(1.45),
-                  3: FlexColumnWidth(0.9),
-                  4: FlexColumnWidth(0.5),
+                  0: FlexColumnWidth(0.8),
+                  1: FlexColumnWidth(2.5),
+                  2: FlexColumnWidth(1.35),
+                  3: FlexColumnWidth(1.05),
+                  4: FlexColumnWidth(1.15),
                 },
                 children: [
                   const TableRow(
@@ -191,8 +191,12 @@ class _BillPreviewScreenState extends State<BillPreviewScreen> {
                       _SlipCell('Qty', header: true, align: TextAlign.center),
                       _SlipCell('Particulars', header: true),
                       _SlipCell('B.N. ED', header: true),
-                      _SlipCell('Rs.', header: true, align: TextAlign.right),
-                      _SlipCell('P.', header: true, align: TextAlign.right),
+                      _SlipCell('Rate', header: true, align: TextAlign.right),
+                      _SlipCell(
+                        'Line Total',
+                        header: true,
+                        align: TextAlign.right,
+                      ),
                     ],
                   ),
                   ...rows.map(
@@ -201,8 +205,8 @@ class _BillPreviewScreenState extends State<BillPreviewScreen> {
                         _SlipCell(row.qty, align: TextAlign.center),
                         _SlipCell(row.particulars),
                         _SlipCell(row.batchEd),
-                        _SlipCell(row.rs, align: TextAlign.right),
-                        _SlipCell(row.paise, align: TextAlign.right),
+                        _SlipCell(row.rate, align: TextAlign.right),
+                        _SlipCell(row.amount, align: TextAlign.right),
                       ],
                     ),
                   ),
@@ -317,8 +321,12 @@ class _BillPreviewScreenState extends State<BillPreviewScreen> {
             qty: item.qty <= 0 ? '' : item.qty.toString(),
             particulars: _cleanMedicineName(item.name),
             batchEd: item.batchEd,
-            rs: item.rs <= 0 ? '' : item.rs.toString(),
-            paise: item.paise <= 0 ? '' : item.paise.toString().padLeft(2, '0'),
+            rate: item.unitRatePaise <= 0
+                ? ''
+                : _formatMoney(item.unitRatePaise),
+            amount: item.amountPaise <= 0
+                ? ''
+                : '${item.qty} x ${_formatMoney(item.unitRatePaise)} = ${_formatMoney(item.amountPaise)}',
           ),
         )
         .toList();
@@ -327,6 +335,11 @@ class _BillPreviewScreenState extends State<BillPreviewScreen> {
       rows.add(const _PreviewRow());
     }
     return rows;
+  }
+
+  String _formatMoney(int paise) {
+    final rs = paise / 100;
+    return NumberFormat.currency(locale: 'en_IN', symbol: '₹').format(rs);
   }
 
   String _cleanMedicineName(String value) {
@@ -481,13 +494,13 @@ class _PreviewRow {
     this.qty = '',
     this.particulars = '',
     this.batchEd = '',
-    this.rs = '',
-    this.paise = '',
+    this.rate = '',
+    this.amount = '',
   });
 
   final String qty;
   final String particulars;
   final String batchEd;
-  final String rs;
-  final String paise;
+  final String rate;
+  final String amount;
 }
