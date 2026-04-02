@@ -10,7 +10,9 @@ import 'add_medicine_screen.dart';
 import 'bill_preview_screen.dart';
 
 class NewBillScreen extends StatefulWidget {
-  const NewBillScreen({super.key});
+  const NewBillScreen({super.key, this.bill});
+
+  final Bill? bill;
 
   @override
   State<NewBillScreen> createState() => _NewBillScreenState();
@@ -42,7 +44,26 @@ class _NewBillScreenState extends State<NewBillScreen> {
   void initState() {
     super.initState();
     _billNoController = TextEditingController();
-    _loadNextBillNo();
+    final existing = widget.bill;
+    if (existing != null) {
+      _billNoController.text = existing.billNumber;
+      _patientController.text = existing.patientName;
+      _doctorController.text = existing.doctorName;
+      _selectedDate = existing.date;
+      _items
+        ..clear()
+        ..addAll(
+          existing.items.isEmpty
+              ? [BillItem(qty: 0, name: '', batchEd: '', rs: 0, paise: 0)]
+              : existing.items.map((item) => item.copyWith()).toList(),
+        );
+      _rowIds
+        ..clear()
+        ..addAll(List<int>.generate(_items.length, (index) => index));
+      _nextRowId = _items.length;
+    } else {
+      _loadNextBillNo();
+    }
     _loadMasterData();
   }
 
@@ -75,6 +96,17 @@ class _NewBillScreenState extends State<NewBillScreen> {
       _medicineList = medicines;
       _loadingMasters = false;
     });
+
+    if (widget.bill != null) {
+      for (final entry in _rowIds.asMap().entries) {
+        final index = entry.key;
+        final rowId = entry.value;
+        final item = _items[index];
+        if (item.name.trim().isNotEmpty) {
+          await _loadBatchHistoryForRow(rowId, item.name);
+        }
+      }
+    }
   }
 
   int get _totalPaise {
@@ -151,32 +183,61 @@ class _NewBillScreenState extends State<NewBillScreen> {
     });
 
     final bill = Bill(
+      id: widget.bill?.id,
       billNumber: _billNoController.text.trim(),
       patientName: _patientController.text.trim(),
       doctorName: _doctorController.text.trim(),
       date: _selectedDate,
       items: cleanedItems,
       totalPaise: cleanedItems.fold<int>(0, (sum, e) => sum + e.amountPaise),
-      createdAt: DateTime.now(),
+      createdAt: widget.bill?.createdAt ?? DateTime.now(),
     );
 
     try {
       await DatabaseHelper.instance.upsertPatientName(_patientController.text);
       await DatabaseHelper.instance.upsertDoctorName(_doctorController.text);
 
-      final id = await DatabaseHelper.instance.insertBill(bill);
-      final lowStocks = await DatabaseHelper.instance.reduceStockForBillItems(
-        cleanedItems,
-      );
+      if (widget.bill == null) {
+        final id = await DatabaseHelper.instance.insertBill(bill);
+        final lowStocks = await DatabaseHelper.instance.reduceStockForBillItems(
+          cleanedItems,
+        );
+        final stored = await DatabaseHelper.instance.getBillById(id);
+        if (stored == null) {
+          _showSnack('Failed to save bill.');
+          return;
+        }
 
-      final stored = await DatabaseHelper.instance.getBillById(id);
-      if (stored == null) {
-        _showSnack('Failed to save bill.');
+        if (lowStocks.isNotEmpty) {
+          _showSnack('Low stock alert: ${lowStocks.join(', ')}');
+        }
+
+        if (exportPdf) {
+          final file = await PdfGenerator.generateBillPdf(stored);
+          _showSnack('PDF saved: ${file.path}');
+        }
+
+        if (!mounted) {
+          return;
+        }
+
+        await Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => BillPreviewScreen(bill: stored)),
+        );
         return;
       }
 
-      if (lowStocks.isNotEmpty) {
-        _showSnack('Low stock alert: ${lowStocks.join(', ')}');
+      await DatabaseHelper.instance.replaceBill(
+        oldBill: widget.bill!,
+        newBill: bill,
+      );
+      final stored = await DatabaseHelper.instance.getBillById(
+        widget.bill!.id!,
+      );
+      if (stored == null) {
+        _showSnack('Failed to save bill.');
+        return;
       }
 
       if (exportPdf) {
@@ -188,10 +249,7 @@ class _NewBillScreenState extends State<NewBillScreen> {
         return;
       }
 
-      await Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => BillPreviewScreen(bill: stored)),
-      );
+      Navigator.pop(context, stored);
     } finally {
       if (mounted) {
         setState(() {
@@ -316,8 +374,8 @@ class _NewBillScreenState extends State<NewBillScreen> {
                       _items[index] = _items[index].copyWith(
                         name: selected.name,
                         batchEd: selected.batchEd,
-                        rs: selected.rs,
-                        paise: selected.paise,
+                        rs: selected.unitRs,
+                        paise: selected.unitPaise,
                       );
                     });
                     _loadBatchHistoryForRow(rowId, selected.name);

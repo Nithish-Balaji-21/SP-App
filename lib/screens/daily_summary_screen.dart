@@ -134,7 +134,7 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
         bills: _bills,
         dateLabel: label,
       );
-      await Share.shareXFiles([XFile(file.path)], text: '9 Bills A4 Sheet');
+      await Share.shareXFiles([XFile(file.path)], text: 'Bills A4 Sheet');
     } finally {
       if (mounted) {
         setState(() {
@@ -284,7 +284,7 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
             child: ElevatedButton.icon(
               onPressed: _busy ? null : _exportNineBills,
               icon: const Icon(Icons.grid_view),
-              label: const Text('Export 9 Bills (A4)'),
+              label: const Text('Export Bills (A4)'),
             ),
           ),
           const SizedBox(height: 10),
@@ -293,7 +293,7 @@ class _DailySummaryScreenState extends State<DailySummaryScreen> {
             child: OutlinedButton.icon(
               onPressed: _busy ? null : _printNineBills,
               icon: const Icon(Icons.print_outlined),
-              label: const Text('Print 9 Bills (A4)'),
+              label: const Text('Print Bills (A4)'),
             ),
           ),
         ],

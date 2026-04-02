@@ -240,7 +240,7 @@ class PdfGenerator {
               ),
               pw.Spacer(),
               pw.Text(
-                'Ph: 99943 54624',
+                'Ph: +91 9865605061',
                 style: pw.TextStyle(fontSize: textSize, color: _inkBlue),
               ),
             ],

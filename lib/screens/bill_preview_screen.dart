@@ -5,8 +5,10 @@ import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../db/database_helper.dart';
 import '../models/bill.dart';
 import '../utils/pdf_generator.dart';
+import 'new_bill_screen.dart';
 
 class BillPreviewScreen extends StatefulWidget {
   const BillPreviewScreen({super.key, required this.bill});
@@ -20,15 +22,36 @@ class BillPreviewScreen extends StatefulWidget {
 class _BillPreviewScreenState extends State<BillPreviewScreen> {
   static const Color _inkBlue = Color(0xFF445E9A);
   bool _busy = false;
+  late Bill _bill;
 
-  List<BillItem> get _filledItems => widget.bill.items
+  @override
+  void initState() {
+    super.initState();
+    _bill = widget.bill;
+  }
+
+  List<BillItem> get _filledItems => _bill.items
       .where((e) => e.name.trim().isNotEmpty)
       .toList(growable: false);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Bill Preview')),
+      appBar: AppBar(
+        title: const Text('Bill Preview'),
+        actions: [
+          IconButton(
+            tooltip: 'Edit Bill',
+            icon: const Icon(Icons.edit),
+            onPressed: _busy ? null : _editBill,
+          ),
+          IconButton(
+            tooltip: 'Delete Bill',
+            icon: const Icon(Icons.delete_outline),
+            onPressed: _busy ? null : _deleteBill,
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Expanded(
@@ -83,7 +106,7 @@ class _BillPreviewScreenState extends State<BillPreviewScreen> {
   }
 
   Widget _billSlipCard() {
-    final bill = widget.bill;
+    final bill = _bill;
     final rows = _buildRows();
 
     return Container(
@@ -115,7 +138,7 @@ class _BillPreviewScreenState extends State<BillPreviewScreen> {
                   ),
                   const Spacer(),
                   Text(
-                    'Ph: 99943 54624',
+                    'Ph: +91 9865605061',
                     style: const TextStyle(color: _inkBlue, fontSize: 11),
                   ),
                 ],
@@ -323,10 +346,10 @@ class _BillPreviewScreenState extends State<BillPreviewScreen> {
     });
 
     try {
-      final file = await PdfGenerator.generateBillPdf(widget.bill);
+      final file = await PdfGenerator.generateBillPdf(_bill);
       await Share.shareXFiles([
         XFile(file.path),
-      ], text: 'State Pharmacy Bill ${widget.bill.billNumber}');
+      ], text: 'State Pharmacy Bill ${_bill.billNumber}');
     } finally {
       if (mounted) {
         setState(() {
@@ -342,10 +365,67 @@ class _BillPreviewScreenState extends State<BillPreviewScreen> {
     });
 
     try {
-      final bytes = await PdfGenerator.buildBillPdfBytes(widget.bill);
+      final bytes = await PdfGenerator.buildBillPdfBytes(_bill);
       await Printing.layoutPdf(
         onLayout: (_) async => Uint8List.fromList(bytes),
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _editBill() async {
+    final updated = await Navigator.push<Bill>(
+      context,
+      MaterialPageRoute(builder: (_) => NewBillScreen(bill: _bill)),
+    );
+    if (updated == null || !mounted) {
+      return;
+    }
+    setState(() {
+      _bill = updated;
+    });
+  }
+
+  Future<void> _deleteBill() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Delete Bill'),
+          content: Text('Delete Bill No ${_bill.billNumber}?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) {
+      return;
+    }
+
+    setState(() {
+      _busy = true;
+    });
+
+    try {
+      await DatabaseHelper.instance.deleteBillAndRestoreStock(_bill);
+      if (!mounted) {
+        return;
+      }
+      Navigator.pop(context, true);
     } finally {
       if (mounted) {
         setState(() {

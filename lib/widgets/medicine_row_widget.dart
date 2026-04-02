@@ -66,10 +66,12 @@ class _MedicineRowWidgetState extends State<MedicineRowWidget> {
     if (_qtyController.text != qtyText) {
       _qtyController.text = qtyText;
     }
+
     final medicineName = _cleanMedicineName(widget.item.name);
     if (_medicineController.text != medicineName) {
       _medicineController.text = medicineName;
     }
+
     if (_batchController.text != widget.item.batchEd) {
       _batchController.text = widget.item.batchEd;
     }
@@ -90,6 +92,7 @@ class _MedicineRowWidgetState extends State<MedicineRowWidget> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
@@ -125,22 +128,21 @@ class _MedicineRowWidgetState extends State<MedicineRowWidget> {
                   child: Autocomplete<String>(
                     optionsBuilder: (textEditingValue) {
                       final query = textEditingValue.text.trim().toLowerCase();
-                      if (query.isEmpty) {
-                        return widget.medicineOptions
-                            .map((e) => _cleanMedicineName(e.name))
-                            .toSet()
-                            .take(20);
-                      }
-                      return widget.medicineOptions
+                      final all = widget.medicineOptions
                           .map((e) => _cleanMedicineName(e.name))
-                          .where((name) => name.toLowerCase().contains(query))
-                          .toSet()
-                          .take(20);
+                          .toSet();
+                      if (query.isEmpty) {
+                        return all.take(20);
+                      }
+                      return all.where(
+                        (name) => name.toLowerCase().contains(query),
+                      ).take(20);
                     },
                     onSelected: (selectedName) {
                       final clean = _cleanMedicineName(selectedName);
                       _medicineController.text = clean;
                       widget.onChanged(widget.item.copyWith(name: clean));
+
                       final selected = widget.medicineOptions.firstWhere(
                         (e) => _cleanMedicineName(e.name) == clean,
                         orElse: () => MedicineMaster(
@@ -148,6 +150,7 @@ class _MedicineRowWidgetState extends State<MedicineRowWidget> {
                           name: clean,
                           batchEd: '',
                           pricePaise: 0,
+                          unitsPerPack: 1,
                           stockQty: 0,
                           lowStockThreshold: 10,
                         ),
@@ -163,8 +166,7 @@ class _MedicineRowWidgetState extends State<MedicineRowWidget> {
                         ) {
                           if (textEditingController.text !=
                               _medicineController.text) {
-                            textEditingController.text =
-                                _medicineController.text;
+                            textEditingController.text = _medicineController.text;
                           }
                           return TextFormField(
                             controller: textEditingController,
@@ -177,9 +179,7 @@ class _MedicineRowWidgetState extends State<MedicineRowWidget> {
                             onChanged: (value) {
                               final clean = _cleanMedicineName(value);
                               _medicineController.text = clean;
-                              widget.onChanged(
-                                widget.item.copyWith(name: clean),
-                              );
+                              widget.onChanged(widget.item.copyWith(name: clean));
                               widget.onMedicineNameChanged(clean);
                             },
                           );
@@ -188,6 +188,8 @@ class _MedicineRowWidgetState extends State<MedicineRowWidget> {
                 ),
               ],
             ),
+            const SizedBox(height: 6),
+            _rateHint(context),
             const SizedBox(height: 10),
             Autocomplete<String>(
               optionsBuilder: (textEditingValue) {
@@ -269,6 +271,33 @@ class _MedicineRowWidgetState extends State<MedicineRowWidget> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _rateHint(BuildContext context) {
+    final selected = widget.medicineOptions.cast<MedicineMaster?>().firstWhere(
+      (medicine) =>
+          medicine != null &&
+          _cleanMedicineName(medicine.name) == _cleanMedicineName(widget.item.name),
+      orElse: () => null,
+    );
+
+    if (selected == null || selected.unitsPerPack <= 0) {
+      return const SizedBox.shrink();
+    }
+
+    final unitPrice = selected.unitPricePaise;
+    final unitText = 'Unit rate: Rs ${(unitPrice / 100).toStringAsFixed(2)}';
+    final packText = 'Pack size: ${selected.unitsPerPack}';
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        '$unitText | $packText',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Colors.grey[700],
+            ),
       ),
     );
   }

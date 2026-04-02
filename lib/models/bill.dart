@@ -15,7 +15,9 @@ class BillItem {
   final int rs;
   final int paise;
 
-  int get amountPaise => (rs * 100) + paise;
+  int get unitRatePaise => (rs * 100) + paise;
+
+  int get amountPaise => qty <= 0 ? 0 : qty * unitRatePaise;
 
   BillItem copyWith({
     int? qty,

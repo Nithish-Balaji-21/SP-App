@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../db/database_helper.dart';
+import '../models/master_data.dart';
 
 class AddMedicineScreen extends StatefulWidget {
-  const AddMedicineScreen({super.key});
+  const AddMedicineScreen({super.key, this.medicine});
+
+  final MedicineMaster? medicine;
 
   @override
   State<AddMedicineScreen> createState() => _AddMedicineScreenState();
@@ -17,8 +20,28 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
   final _paiseController = TextEditingController();
   final _stockController = TextEditingController(text: '0');
   final _thresholdController = TextEditingController(text: '10');
+  final _unitsPerPackController = TextEditingController(text: '1');
 
   bool _saving = false;
+
+  MedicineMaster? get _medicine => widget.medicine;
+
+  bool get _isEditing => _medicine != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final medicine = _medicine;
+    if (medicine != null) {
+      _nameController.text = medicine.name;
+      _batchEdController.text = medicine.batchEd;
+      _rsController.text = medicine.rs.toString();
+      _paiseController.text = medicine.paise.toString().padLeft(2, '0');
+      _stockController.text = medicine.stockQty.toString();
+      _thresholdController.text = medicine.lowStockThreshold.toString();
+      _unitsPerPackController.text = medicine.unitsPerPack.toString();
+    }
+  }
 
   @override
   void dispose() {
@@ -28,6 +51,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
     _paiseController.dispose();
     _stockController.dispose();
     _thresholdController.dispose();
+    _unitsPerPackController.dispose();
     super.dispose();
   }
 
@@ -47,11 +71,14 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
     );
     final stock = int.tryParse(_stockController.text.trim()) ?? 0;
     final threshold = int.tryParse(_thresholdController.text.trim()) ?? 10;
+    final unitsPerPack = int.tryParse(_unitsPerPackController.text.trim()) ?? 1;
 
-    await DatabaseHelper.instance.upsertMedicine(
+    await DatabaseHelper.instance.saveMedicine(
+      id: _medicine?.id,
       name: _nameController.text.trim(),
       batchEd: _batchEdController.text.trim(),
       pricePaise: (rs * 100) + paise,
+      unitsPerPack: unitsPerPack <= 0 ? 1 : unitsPerPack,
       stockQty: stock,
       lowStockThreshold: threshold,
     );
@@ -66,7 +93,9 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Add New Medicine')),
+      appBar: AppBar(
+        title: Text(_isEditing ? 'Edit Medicine' : 'Add New Medicine'),
+      ),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -127,6 +156,23 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
               ],
             ),
             const SizedBox(height: 12),
+            TextFormField(
+              controller: _unitsPerPackController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Units per Strip / Pack',
+                helperText: 'Example: 10 tablets in a strip',
+                border: OutlineInputBorder(),
+              ),
+              validator: (value) {
+                final parsed = int.tryParse((value ?? '').trim()) ?? 0;
+                if (parsed <= 0) {
+                  return 'Enter pack size';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -158,7 +204,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
               child: ElevatedButton.icon(
                 onPressed: _saving ? null : _save,
                 icon: const Icon(Icons.save),
-                label: const Text('Save Medicine'),
+                label: Text(_isEditing ? 'Update Medicine' : 'Save Medicine'),
               ),
             ),
           ],

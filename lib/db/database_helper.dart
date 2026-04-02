@@ -11,7 +11,7 @@ class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._();
 
   static const _dbName = 'state_pharmacy.db';
-  static const _dbVersion = 2;
+  static const _dbVersion = 3;
   static const _billsTable = 'bills';
   static const _patientsTable = 'patients';
   static const _doctorsTable = 'doctors';
@@ -43,8 +43,12 @@ class DatabaseHelper {
           await _createMasterTables(db);
           await _seedMasterDataIfNeeded(db);
         }
+        if (oldVersion < 3) {
+          await _ensureMedicinePackColumn(db);
+        }
       },
       onOpen: (db) async {
+        await _ensureMedicinePackColumn(db);
         await _replacePlaceholderMedicineNamesIfNeeded(db);
       },
     );
@@ -90,6 +94,7 @@ class DatabaseHelper {
         name TEXT,
         batch_ed TEXT,
         price_paise INTEGER,
+        units_per_pack INTEGER NOT NULL DEFAULT 1,
         stock_qty INTEGER,
         low_stock_threshold INTEGER,
         updated_at TEXT,
@@ -132,6 +137,7 @@ class DatabaseHelper {
           'name': _seedMedicineNameAt(i),
           'batch_ed': batch,
           'price_paise': price,
+          'units_per_pack': 1,
           'stock_qty': 20 + random.nextInt(120),
           'low_stock_threshold': 10,
           'updated_at': now,
@@ -212,6 +218,19 @@ class DatabaseHelper {
     return db.insert(_billsTable, bill.toMap());
   }
 
+  Future<int> updateBill(Bill bill) async {
+    final db = await database;
+    if (bill.id == null) {
+      return 0;
+    }
+    return db.update(
+      _billsTable,
+      bill.toMap(),
+      where: 'id = ?',
+      whereArgs: [bill.id],
+    );
+  }
+
   Future<Bill?> getBillById(int id) async {
     final db = await database;
     final rows = await db.query(
@@ -278,6 +297,16 @@ class DatabaseHelper {
   Future<int> deleteBill(int id) async {
     final db = await database;
     return db.delete(_billsTable, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> deleteBillAndRestoreStock(Bill bill) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await _adjustStockForBillItems(txn, bill.items, increase: true);
+      if (bill.id != null) {
+        await txn.delete(_billsTable, where: 'id = ?', whereArgs: [bill.id]);
+      }
+    });
   }
 
   Future<int> getNextBillNumber() async {
@@ -369,6 +398,20 @@ class DatabaseHelper {
     return rows.map(MedicineMaster.fromMap).toList();
   }
 
+  Future<MedicineMaster?> getMedicineById(int id) async {
+    final db = await database;
+    final rows = await db.query(
+      _medicinesTable,
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return MedicineMaster.fromMap(rows.first);
+  }
+
   Future<List<String>> getBatchHistoryByMedicineName(
     String medicineName,
   ) async {
@@ -395,41 +438,102 @@ class DatabaseHelper {
     return values;
   }
 
-  Future<void> upsertMedicine({
+  Future<int> saveMedicine({
+    int? id,
     required String name,
     required String batchEd,
     required int pricePaise,
+    int unitsPerPack = 1,
     int stockQty = 0,
     int lowStockThreshold = 10,
+    DatabaseExecutor? executor,
   }) async {
     final normalizedName = name.trim();
     final normalizedBatch = batchEd.trim();
     if (normalizedName.isEmpty) {
-      return;
+      return 0;
     }
 
-    final db = await database;
+    final db = executor ?? await database;
     final now = DateTime.now().toIso8601String();
-
-    await db.insert(_medicinesTable, {
+    final values = {
       'name': normalizedName,
       'batch_ed': normalizedBatch,
       'price_paise': pricePaise,
+      'units_per_pack': unitsPerPack <= 0 ? 1 : unitsPerPack,
       'stock_qty': stockQty,
       'low_stock_threshold': lowStockThreshold,
       'updated_at': now,
-    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    };
 
-    await db.update(
+    if (id != null) {
+      return db.update(
+        _medicinesTable,
+        values,
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    }
+
+    final insertedId = await db.insert(
       _medicinesTable,
-      {'price_paise': pricePaise, 'updated_at': now},
+      values,
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+    if (insertedId > 0) {
+      return insertedId;
+    }
+
+    return db.update(
+      _medicinesTable,
+      values,
       where: 'name = ? AND batch_ed = ?',
       whereArgs: [normalizedName, normalizedBatch],
     );
   }
 
-  Future<List<String>> reduceStockForBillItems(List<BillItem> items) async {
+  Future<List<String>> reduceStockForBillItems(
+    List<BillItem> items, {
+    DatabaseExecutor? executor,
+  }) async {
+    final db = executor ?? await database;
+    return _adjustStockForBillItems(db, items, increase: false);
+  }
+
+  Future<void> restoreStockForBillItems(
+    List<BillItem> items, {
+    DatabaseExecutor? executor,
+  }) async {
+    final db = executor ?? await database;
+    await _adjustStockForBillItems(db, items, increase: true);
+  }
+
+  Future<void> replaceBill({
+    required Bill oldBill,
+    required Bill newBill,
+  }) async {
     final db = await database;
+    if (oldBill.id == null) {
+      return;
+    }
+
+    await db.transaction((txn) async {
+      await restoreStockForBillItems(oldBill.items, executor: txn);
+      await txn.update(
+        _billsTable,
+        newBill.copyWith(id: oldBill.id).toMap(),
+        where: 'id = ?',
+        whereArgs: [oldBill.id],
+      );
+      await reduceStockForBillItems(newBill.items, executor: txn);
+    });
+  }
+
+  Future<List<String>> _adjustStockForBillItems(
+    DatabaseExecutor db,
+    List<BillItem> items, {
+    required bool increase,
+  }) async {
     final lowStockNames = <String>{};
 
     for (final item in items) {
@@ -447,10 +551,12 @@ class DatabaseHelper {
       );
 
       if (existing.isEmpty) {
-        await upsertMedicine(
+        await saveMedicine(
+          executor: db,
           name: name,
           batchEd: batch,
-          pricePaise: item.amountPaise,
+          pricePaise: item.unitRatePaise,
+          unitsPerPack: 1,
           stockQty: 0,
           lowStockThreshold: 10,
         );
@@ -470,13 +576,16 @@ class DatabaseHelper {
       final id = (row['id'] as num).toInt();
       final stock = (row['stock_qty'] as num?)?.toInt() ?? 0;
       final threshold = (row['low_stock_threshold'] as num?)?.toInt() ?? 10;
-      final updatedStock = max(0, stock - max(0, item.qty));
+      final quantity = max(0, item.qty);
+      final updatedStock = increase
+          ? (stock + quantity)
+          : max(0, stock - quantity);
 
       await db.update(
         _medicinesTable,
         {
           'stock_qty': updatedStock,
-          'price_paise': item.amountPaise,
+          'price_paise': item.unitRatePaise,
           'updated_at': DateTime.now().toIso8601String(),
         },
         where: 'id = ?',
@@ -489,6 +598,25 @@ class DatabaseHelper {
     }
 
     return lowStockNames.toList()..sort();
+  }
+
+  Future<int> deleteMedicine(int id) async {
+    final db = await database;
+    return db.delete(_medicinesTable, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> _ensureMedicinePackColumn(Database db) async {
+    final columns = await db.rawQuery('PRAGMA table_info($_medicinesTable)');
+    final hasPackColumn = columns.any((column) {
+      final name = (column['name'] as String? ?? '').trim();
+      return name == 'units_per_pack';
+    });
+
+    if (!hasPackColumn) {
+      await db.execute(
+        'ALTER TABLE $_medicinesTable ADD COLUMN units_per_pack INTEGER NOT NULL DEFAULT 1',
+      );
+    }
   }
 
   Future<int> getLowStockCount() async {

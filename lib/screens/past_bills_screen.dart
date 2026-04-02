@@ -61,7 +61,7 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
       return;
     }
 
-    await DatabaseHelper.instance.deleteBill(bill.id!);
+    await DatabaseHelper.instance.deleteBillAndRestoreStock(bill);
     await _refresh();
   }
 
@@ -112,12 +112,15 @@ class _PastBillsScreenState extends State<PastBillsScreen> {
                       return BillCardWidget(
                         bill: bill,
                         onTap: () async {
-                          await Navigator.push(
+                          final result = await Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (_) => BillPreviewScreen(bill: bill),
                             ),
                           );
+                          if (result != null) {
+                            await _refresh();
+                          }
                         },
                         onLongPress: () => _confirmDelete(bill),
                       );
