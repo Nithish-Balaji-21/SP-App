@@ -83,6 +83,11 @@ class _MedicineInventoryScreenState extends State<MedicineInventoryScreen> {
         title: const Text('Inventory'),
         actions: [
           IconButton(
+            tooltip: 'Delete All Medicines',
+            icon: const Icon(Icons.delete_sweep_outlined),
+            onPressed: _deleteAllMedicines,
+          ),
+          IconButton(
             tooltip: 'Add Medicine',
             icon: const Icon(Icons.add),
             onPressed: () => _openEditor(),
@@ -175,5 +180,42 @@ class _MedicineInventoryScreenState extends State<MedicineInventoryScreen> {
       locale: 'en_IN',
       symbol: '₹',
     ).format(paise / 100);
+  }
+
+  Future<void> _deleteAllMedicines() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Delete All Medicines'),
+          content: const Text(
+            'This will remove all medicines from inventory. You can add real medicines manually after this. Continue?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete All'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) {
+      return;
+    }
+
+    await DatabaseHelper.instance.deleteAllMedicines();
+    await _refresh();
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('All medicines deleted from inventory.')),
+    );
   }
 }

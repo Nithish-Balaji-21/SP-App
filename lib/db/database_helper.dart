@@ -412,6 +412,33 @@ class DatabaseHelper {
     return MedicineMaster.fromMap(rows.first);
   }
 
+  Future<MedicineMaster?> getMedicineByNameAndBatch({
+    required String name,
+    required String batchEd,
+  }) async {
+    final normalizedName = name.trim();
+    final normalizedBatch = batchEd.trim();
+    if (normalizedName.isEmpty) {
+      return null;
+    }
+
+    final db = await database;
+    final rows = await db.query(
+      _medicinesTable,
+      where: normalizedBatch.isEmpty ? 'name = ?' : 'name = ? AND batch_ed = ?',
+      whereArgs: normalizedBatch.isEmpty
+          ? [normalizedName]
+          : [normalizedName, normalizedBatch],
+      orderBy: normalizedBatch.isEmpty ? 'updated_at DESC, id DESC' : null,
+      limit: 1,
+    );
+
+    if (rows.isEmpty) {
+      return null;
+    }
+    return MedicineMaster.fromMap(rows.first);
+  }
+
   Future<List<String>> getBatchHistoryByMedicineName(
     String medicineName,
   ) async {
@@ -603,6 +630,11 @@ class DatabaseHelper {
   Future<int> deleteMedicine(int id) async {
     final db = await database;
     return db.delete(_medicinesTable, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> deleteAllMedicines() async {
+    final db = await database;
+    return db.delete(_medicinesTable);
   }
 
   Future<void> _ensureMedicinePackColumn(Database db) async {

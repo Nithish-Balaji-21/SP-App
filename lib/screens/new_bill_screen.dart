@@ -39,6 +39,7 @@ class _NewBillScreenState extends State<NewBillScreen> {
   List<String> _doctorNames = [];
   List<MedicineMaster> _medicineList = [];
   final Map<int, List<String>> _batchHistoryByRow = {};
+  bool _stockPopupOpen = false;
 
   @override
   void initState() {
@@ -175,6 +176,12 @@ class _NewBillScreenState extends State<NewBillScreen> {
 
     if (_billNoController.text.trim().isEmpty) {
       _showSnack('Bill number is required.');
+      return;
+    }
+
+    final stockError = await _validateStockBeforeSave(cleanedItems);
+    if (stockError != null) {
+      await _showStockLimitDialog(stockError);
       return;
     }
 
@@ -381,9 +388,7 @@ class _NewBillScreenState extends State<NewBillScreen> {
                     _loadBatchHistoryForRow(rowId, selected.name);
                   },
                   onChanged: (updated) {
-                    setState(() {
-                      _items[index] = updated;
-                    });
+                    _onRowChanged(index, updated);
                   },
                 ),
               );
@@ -494,5 +499,140 @@ class _NewBillScreenState extends State<NewBillScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _onRowChanged(int index, BillItem updated) {
+    final clamped = _clampToAvailableStock(updated);
+    setState(() {
+      _items[index] = clamped;
+    });
+
+    if (clamped.qty != updated.qty) {
+      _showStockLimitDialog(
+        '${_cleanMedicineName(updated.name)}: only ${clamped.qty} in stock. You cannot bill more than available quantity.',
+      );
+    }
+  }
+
+  BillItem _clampToAvailableStock(BillItem item) {
+    final stock = _availableStockFor(item.name, item.batchEd);
+    if (stock == null) {
+      return item;
+    }
+    if (stock <= 0 && item.qty > 0) {
+      return item.copyWith(qty: 0);
+    }
+    if (item.qty > stock) {
+      return item.copyWith(qty: stock);
+    }
+    return item;
+  }
+
+  int? _availableStockFor(String name, String batchEd) {
+    final normalizedName = name.trim();
+    if (normalizedName.isEmpty) {
+      return null;
+    }
+
+    final normalizedBatch = batchEd.trim();
+    MedicineMaster? match;
+    if (normalizedBatch.isNotEmpty) {
+      for (final med in _medicineList) {
+        if (med.name == normalizedName && med.batchEd == normalizedBatch) {
+          match = med;
+          break;
+        }
+      }
+    } else {
+      for (final med in _medicineList) {
+        if (med.name == normalizedName) {
+          match = med;
+          break;
+        }
+      }
+    }
+
+    return match?.stockQty;
+  }
+
+  Future<String?> _validateStockBeforeSave(List<BillItem> items) async {
+    final oldQtyByKey = <String, int>{};
+    if (widget.bill != null) {
+      for (final oldItem in widget.bill!.items) {
+        final key = _itemKey(oldItem.name, oldItem.batchEd);
+        oldQtyByKey[key] = (oldQtyByKey[key] ?? 0) + oldItem.qty;
+      }
+    }
+
+    final requestedByKey = <String, int>{};
+    for (final item in items) {
+      final key = _itemKey(item.name, item.batchEd);
+      requestedByKey[key] = (requestedByKey[key] ?? 0) + item.qty;
+    }
+
+    for (final entry in requestedByKey.entries) {
+      final parts = entry.key.split('||');
+      final name = parts.first;
+      final batch = parts.length > 1 ? parts[1] : '';
+      final requestedQty = entry.value;
+
+      final medicine = await DatabaseHelper.instance.getMedicineByNameAndBatch(
+        name: name,
+        batchEd: batch,
+      );
+
+      if (medicine == null) {
+        return '${_cleanMedicineName(name)} ($batch) is not in inventory. Add it to stock first.';
+      }
+
+      final available = medicine.stockQty + (oldQtyByKey[entry.key] ?? 0);
+      if (available <= 0) {
+        return '${_cleanMedicineName(name)} ($batch) is out of stock.';
+      }
+
+      if (requestedQty > available) {
+        return '${_cleanMedicineName(name)} ($batch): available quantity is $available. Please reduce qty.';
+      }
+    }
+
+    return null;
+  }
+
+  String _itemKey(String name, String batch) {
+    return '${name.trim()}||${batch.trim()}';
+  }
+
+  String _cleanMedicineName(String value) {
+    var cleaned = value.trim();
+    cleaned = cleaned.replaceAll(RegExp(r'^\d+\s*[-.:)]\s*'), '');
+    cleaned = cleaned.replaceAll(
+      RegExp(r'\s*\(\s*id\s*[:#-]?\s*\d+\s*\)', caseSensitive: false),
+      '',
+    );
+    cleaned = cleaned.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+    return cleaned;
+  }
+
+  Future<void> _showStockLimitDialog(String message) async {
+    if (_stockPopupOpen || !mounted) {
+      return;
+    }
+    _stockPopupOpen = true;
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Stock Limit'),
+          content: Text(message),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+    _stockPopupOpen = false;
   }
 }
